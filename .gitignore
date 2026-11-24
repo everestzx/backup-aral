@@ -1,0 +1,22 @@
+# Python / Django
+__pycache__/
+*.py[cod]
+*.class
+.venv/
+venv/
+*.sqlite3.bak
+*.sqlite3.checkpoint*
+desktop.ini
+Thumbs.db
+
+# Node / Frontend
+node_modules/
+node_modules*/
+*.tsbuildinfo
+.vite/
+scratch/
+
+# Secrets
+.env
+*.env
+!.env.example

@@ -1,0 +1,465 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ARALert Design System - Central Theme Configuration (Single Source of Truth)
+   ═══════════════════════════════════════════════════════════════════════════════
+   To change the system theme color collectively across the entire application:
+   👉 Simply edit the value of `--brand` below!
+   
+   All shades (hover, dark, light surfaces, subtle borders, glow rings, focus
+   outlines, active navigation tabs, and dark mode surfaces) are automatically
+   calculated and derived via standard CSS `color-mix()`.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── 🎯 MASTER BRAND COLOR ──────────────────────────────────────────────────
+     Change this single hex code to re-theme all components in ARALert:
+     Default ARALert Deep Royal Blue: #0052B7
+     Example alternatives:
+       - Royal Purple:   #7C3AED
+       - Emerald Green:  #059669
+       - Indigo:         #4F46E5
+       - Oceanic Cyan:   #0284C7
+       - Crimson Red:    #DC2626
+     ─────────────────────────────────────────────────────────────────────────── */
+  --brand: #0052B7;
+
+  /* ── 🎨 MASTER CONTAINER & SURFACE SYSTEM ───────────────────────────────────
+     Master light-mode tokens for canvas background vs elevated container cards:
+       - Background Canvas:  #FFFFFF (Pure White)
+       - Top Bar / Sidebar:  #FFFFFF (Pure White)
+       - Containers / Cards: #FFFFFF (Pure White)
+     ─────────────────────────────────────────────────────────────────────────── */
+  --surface-bg: #FFFFFF;
+  --surface-card: #FFFFFF;
+  --container-bg: #FFFFFF;
+
+  /* ── 🪄 AUTOMATIC DYNAMIC DERIVATIVES (Standard CSS color-mix) ───────────────
+     These dynamically adapt whenever --brand changes. You do NOT need to edit
+     these unless you want custom non-standard ratios.
+     ─────────────────────────────────────────────────────────────────────────── */
+  /* Hover state: 15% deeper contrast */
+  --brand-hover: color-mix(in srgb, var(--brand) 85%, #000000);
+
+  /* Darker / Active pressed state: 28% deeper */
+  --brand-dark: color-mix(in srgb, var(--brand) 72%, #000000);
+
+  /* Deepest accent: 45% deeper */
+  --brand-darker: color-mix(in srgb, var(--brand) 55%, #000000);
+
+  /* Soft Light Tint: Used for pills, badges, active row highlights in light mode */
+  --brand-light: color-mix(in srgb, var(--brand) 10%, #FFFFFF);
+
+  /* Subtle Lighter Tint: Used for subtle striped rows and table backgrounds */
+  --brand-lighter: color-mix(in srgb, var(--brand) 5%, #FFFFFF);
+
+  /* Harmonious Border: Used for inputs, pills, modal dividers, and cards */
+  --brand-border: color-mix(in srgb, var(--brand) 30%, #FFFFFF);
+
+  /* Ambient Glow & Focus Rings: 25% opacity alpha blend */
+  --brand-glow: color-mix(in srgb, var(--brand) 25%, transparent);
+
+  /* Brand Text Token */
+  --brand-text: var(--brand);
+
+  /* ── 🎯 SYSTEM RISK & PERFORMANCE PALETTE ──────────────────────────────────
+     Master tokens for Risk Levels, Average Scores, and Attendance indicators:
+       - Low Risk / Good:     #22C55E (Green)
+       - Medium Risk / Fair:  #F59E0B (Amber/Orange)
+       - High Risk / Urgent:  #EF4444 (Red)
+     ─────────────────────────────────────────────────────────────────────────── */
+  --risk-low:            #22C55E;
+  --risk-low-bg:         color-mix(in srgb, var(--risk-low) 14%, #FFFFFF);
+  --risk-low-border:     color-mix(in srgb, var(--risk-low) 38%, #FFFFFF);
+  --risk-low-text:       color-mix(in srgb, var(--risk-low) 60%, #064E3B);
+  --risk-low-badge-bg:   color-mix(in srgb, var(--risk-low) 22%, #FFFFFF);
+
+  --risk-medium:         #F59E0B;
+  --risk-medium-bg:      color-mix(in srgb, var(--risk-medium) 14%, #FFFFFF);
+  --risk-medium-border:  color-mix(in srgb, var(--risk-medium) 38%, #FFFFFF);
+  --risk-medium-text:    color-mix(in srgb, var(--risk-medium) 65%, #78350F);
+  --risk-medium-badge-bg:color-mix(in srgb, var(--risk-medium) 22%, #FFFFFF);
+
+  --risk-high:           #EF4444;
+  --risk-high-bg:        color-mix(in srgb, var(--risk-high) 14%, #FFFFFF);
+  --risk-high-border:    color-mix(in srgb, var(--risk-high) 38%, #FFFFFF);
+  --risk-high-text:      color-mix(in srgb, var(--risk-high) 65%, #881337);
+  --risk-high-badge-bg:  color-mix(in srgb, var(--risk-high) 22%, #FFFFFF);
+
+  /* ── Derived Elevation & Ambient Shadows ─────────────────────────────────── */
+  --shadow-brand: 0 12px 32px -4px color-mix(in srgb, var(--brand) 32%, transparent);
+
+  /* ── Derived Sidebar & Navigation Accent States ──────────────────────────── */
+  --sidebar-active-bg: rgba(0, 82, 183, 0.08);
+  --sidebar-active-border: rgba(0, 82, 183, 0.35);
+  --sidebar-active-glow: 0 1px 3px rgba(0, 82, 183, 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Dark Mode Automatic Adaptations
+   ═══════════════════════════════════════════════════════════════════════════════
+   In dark mode, the primary --brand remains vibrant, while light backgrounds
+   and borders automatically blend against dark OLED surfaces instead of white.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.dark,
+:root.dark {
+  /* Dynamic light tint blending against OLED true black in dark mode */
+  --brand-light: color-mix(in srgb, var(--brand) 20%, #000000);
+  --brand-lighter: color-mix(in srgb, var(--brand) 10%, #000000);
+  --brand-border: color-mix(in srgb, var(--brand) 45%, #000000);
+  --brand-glow: color-mix(in srgb, var(--brand) 30%, transparent);
+
+  /* High-Contrast Crisp Academic Risk & Status Indicators against OLED Pure Black (#000000) */
+  --risk-low-bg:         rgba(52, 211, 153, 0.14);
+  --risk-low-border:     rgba(52, 211, 153, 0.40);
+  --risk-low-text:       #34D399;
+  --risk-low-badge-bg:   rgba(52, 211, 153, 0.20);
+
+  --risk-medium-bg:      rgba(251, 191, 36, 0.14);
+  --risk-medium-border:  rgba(251, 191, 36, 0.40);
+  --risk-medium-text:    #FBBF24;
+  --risk-medium-badge-bg:rgba(251, 191, 36, 0.20);
+
+  --risk-high-bg:        rgba(251, 113, 133, 0.14);
+  --risk-high-border:    rgba(251, 113, 133, 0.40);
+  --risk-high-text:      #FB7185;
+  --risk-high-badge-bg:  rgba(251, 113, 133, 0.20);
+
+  /* Dark mode active sidebar vibrant accent and border */
+  --sidebar-active-bg: rgba(56, 189, 248, 0.14);
+  --sidebar-active-border: rgba(56, 189, 248, 0.50);
+  --sidebar-active-glow: 0 0 10px rgba(56, 189, 248, 0.12);
+}
+
+/* ── 📐 Notebook Grid Tokens (shared by the landing page AND the public navbar) ── */
+:root {
+  --notebook-grid: 40px;
+  /* Vertical position of the ruled line inside each 40px row. Text set with a
+     40px line-height has its baseline ~27px into the row, so a rule at 30px
+     makes every line of text sit directly on a ruled line. */
+  --nb-rule-offset: 30px;
+  /* Horizontal gutter: x of the vertical margin rule, and x where text begins */
+  --nb-margin-x: 0.5rem;    /* 8px mobile (prevents cramping on 360px phones) */
+  --nb-content-x: 0.5rem;   /* 8px mobile */
+}
+
+@media (min-width: 640px) {
+  :root {
+    --nb-margin-x: 3.25rem;   /* 52px tablet */
+    --nb-content-x: 4.5rem;   /* 72px tablet */
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --nb-margin-x: 4.25rem;   /* 68px desktop */
+    --nb-content-x: 5.75rem;  /* 92px desktop */
+  }
+}
+
+/* ── 📓 Authentic Paper Texture & Defined Horizontal Notebook Rules ──────────────── */
+.notebook-paper {
+  background-color: #FAF8F5;
+  background-image:
+    /* Defined solid horizontal notebook rule lines (40px rhythm, 2px thickness) */
+    linear-gradient(to bottom, rgba(62, 92, 142, 0.22) 2px, transparent 2px),
+    /* Tactile organic paper grain & pulp fiber texture (seamless, variance-driven alpha) */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='paperGrain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch' result='noise'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.24  0 0 0 0 0.20  0 0 0 0 0.16  0.038 0.038 0.038 0 0.012'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23paperGrain)'/%3E%3C/svg%3E");
+  background-size: 100% 40px, 240px 240px;
+  background-repeat: repeat, repeat;
+  /* Shift the rules down so they act as baselines for 40px text rows */
+  background-position: 0 var(--nb-rule-offset), 0 0;
+}
+
+/* ── ✨ Dark Mode Luxury Starlight Roof (Tiny Blinking Fiber-Optic Dots) ── */
+.dark .notebook-paper {
+  background-color: #000000;
+  position: relative;
+  /* Steady ambient constellation of tiny starlight pinpoints */
+  background-image: url('./assets/starlight-roof-base.svg') !important;
+  background-size: 700px 700px !important;
+  background-repeat: repeat !important;
+  background-position: 0 0 !important;
+}
+
+/* Blinking Tiny Starlight Dots - Group 1 */
+.dark .notebook-paper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: url('./assets/starlight-roof-blink1.svg');
+  background-size: 800px 800px;
+  background-repeat: repeat;
+  animation: starlightBlinkPhaseA 9s ease-in-out infinite;
+}
+
+/* Blinking Tiny Starlight Dots - Group 2 (Offset Tempo & Phase) */
+.dark .notebook-paper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: url('./assets/starlight-roof-blink2.svg');
+  background-size: 850px 850px;
+  background-repeat: repeat;
+  animation: starlightBlinkPhaseB 13s ease-in-out infinite;
+}
+
+@keyframes starlightBlinkPhaseA {
+  0%, 100% {
+    opacity: 0.08;
+  }
+  25% {
+    opacity: 0.95;
+  }
+  40% {
+    opacity: 0.3;
+  }
+  60% {
+    opacity: 0.85;
+  }
+  80% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes starlightBlinkPhaseB {
+  0%, 100% {
+    opacity: 0.85;
+  }
+  30% {
+    opacity: 0.1;
+  }
+  50% {
+    opacity: 0.95;
+  }
+  75% {
+    opacity: 0.2;
+  }
+  90% {
+    opacity: 0.75;
+  }
+}
+
+/* ── 📐 Typographic Baseline Alignment & Notebook Grid Rhythm (40px Unit) ──── */
+.notebook-paper {
+  --line-height-grid: 40px;
+}
+
+/* Dedicated Full-Screen Page Alignment: Sections snap directly to viewport top */
+.landing-section-anchor {
+  scroll-margin-top: 0px;
+}
+
+/* Paper ink protection: prevents background rule lines from colliding with or striking through letterforms */
+.notebook-paper .notebook-snap-p,
+.notebook-paper .notebook-snap-sm,
+.notebook-paper .notebook-snap-xs,
+.notebook-paper .notebook-snap-h3,
+.notebook-paper .notebook-snap-h2,
+.notebook-paper .notebook-snap-h1 {
+  text-shadow: 
+    0 1px 1px #FAF8F5,
+    0 -1px 1px #FAF8F5,
+    1px 0 1px #FAF8F5,
+    -1px 0 1px #FAF8F5;
+}
+
+.dark .notebook-paper .notebook-snap-p,
+.dark .notebook-paper .notebook-snap-sm,
+.dark .notebook-paper .notebook-snap-xs,
+.dark .notebook-paper .notebook-snap-h3,
+.dark .notebook-paper .notebook-snap-h2,
+.dark .notebook-paper .notebook-snap-h1 {
+  text-shadow: none !important;
+}
+
+/* Text rows locked to the 40px rhythm. Kept in the `components` layer so that
+   Tailwind spacing utilities (mt-10, mb-10…) can still add whole grid rows. */
+@layer components {
+  .notebook-snap-p {
+    font-size: 0.9375rem; /* 15px on phones so lines don't cramp */
+    line-height: 40px !important;
+    margin: 0;
+  }
+
+  @media (min-width: 640px) {
+    .notebook-snap-p {
+      font-size: 1.0625rem; /* 17px tablet & desktop */
+    }
+  }
+
+  .notebook-snap-lead {
+    font-size: 0.875rem; /* 14px on 360px phones for generous side breathing room */
+    line-height: 40px !important;
+    margin: 0;
+  }
+
+  @media (min-width: 640px) {
+    .notebook-snap-lead {
+      font-size: 1.125rem; /* 18px tablet */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .notebook-snap-lead {
+      font-size: 1.25rem; /* 20px desktop */
+    }
+  }
+
+  .notebook-snap-sm {
+    font-size: 0.9375rem; /* 15px */
+    line-height: 40px !important;
+    margin: 0;
+  }
+
+  .notebook-snap-xs {
+    font-size: 0.8125rem; /* 13px */
+    line-height: 40px !important;
+    margin: 0;
+  }
+
+  .notebook-snap-h3 {
+    font-size: 1.125rem; /* 18px mobile */
+    line-height: 40px !important;
+    margin: 0;
+  }
+
+  @media (min-width: 640px) {
+    .notebook-snap-h3 {
+      font-size: 1.25rem; /* 20px tablet & desktop */
+    }
+  }
+
+  .notebook-snap-h2 {
+    font-size: 1.5rem; /* 24px */
+    line-height: 40px !important; /* 1 ruled line per text row */
+    margin: 0;
+  }
+
+  @media (max-width: 640px) {
+    .notebook-snap-h2 {
+      font-size: 1.25rem; /* 20px on 360px phones */
+      line-height: 40px !important;
+    }
+  }
+
+  .notebook-snap-h1 {
+    font-size: clamp(2.25rem, 5.5vw, 4rem);
+    line-height: 80px !important;
+    margin: 0;
+  }
+}
+
+/* Notebook grid-aligned button: exactly 2 rows tall (80px) and nudged up so its
+   top and bottom borders sit precisely ON ruled lines instead of between them.
+   The paper fill hides the rule that would otherwise run through the label. */
+.notebook-btn-2line {
+  position: relative;
+  top: calc(var(--nb-rule-offset) - var(--notebook-grid));
+  height: 80px !important;
+  box-sizing: border-box !important;
+  background-color: #FAF8F5;
+}
+
+.notebook-btn-2line#hero-portal-cta:hover {
+  background-color: #0052B7 !important;
+  border-color: #0052B7 !important;
+  color: #ffffff !important;
+}
+
+.dark .notebook-btn-2line {
+  background-color: #000000;
+}
+
+.dark .notebook-btn-2line#hero-portal-cta:hover {
+  background-color: #0052B7 !important;
+  border-color: #0052B7 !important;
+  color: #ffffff !important;
+}
+
+/* ── 📏 Blue Vertical Margin Line (Authentic Loose-Leaf Notebook Paper) ─────── */
+.notebook-page-container {
+  position: relative;
+  padding-left: var(--nb-content-x);
+}
+
+/* Symmetric variant for centered content (hero) so it clears the margin rule */
+.notebook-page-container--centered {
+  padding-right: var(--nb-content-x);
+}
+
+/* One continuous margin rule for the whole page (starts at the navbar's bottom rule) */
+.notebook-red-margin-line {
+  display: none !important;
+}
+
+.dark .notebook-red-margin-line {
+  display: none !important;
+}
+
+/* Margin annotations (PART I, Q01…): right-aligned in the gutter, on the row's rule */
+.notebook-gutter-label {
+  position: absolute;
+  left: 0;
+  width: calc(var(--nb-margin-x) - 0.625rem);
+  text-align: right;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 40px;
+  color: rgba(26, 93, 173, 0.85);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Same label, positioned from inside an already-indented content block */
+.notebook-gutter-label--nested {
+  left: calc(-1 * var(--nb-content-x));
+}
+
+.dark .notebook-gutter-label {
+  color: rgba(96, 165, 250, 0.8);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Tailwind CSS v4 @theme Integration
+   ═══════════════════════════════════════════════════════════════════════════════
+   Allows using standard Tailwind utility classes like `bg-brand`, `text-brand`,
+   `border-brand`, `hover:bg-brand-hover`, and `ring-brand/20` across all files.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+@theme {
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-darker: var(--brand-darker);
+  --color-brand-light: var(--brand-light);
+  --color-brand-lighter: var(--brand-lighter);
+  --color-brand-border: var(--brand-border);
+  --color-brand-text: var(--brand-text);
+  --color-brand-glow: var(--brand-glow);
+
+  /* Risk color utilities: bg-risk-low, text-risk-high, border-risk-medium, etc. */
+  --color-risk-low: var(--risk-low);
+  --color-risk-low-bg: var(--risk-low-bg);
+  --color-risk-low-border: var(--risk-low-border);
+  --color-risk-low-text: var(--risk-low-text);
+
+  --color-risk-medium: var(--risk-medium);
+  --color-risk-medium-bg: var(--risk-medium-bg);
+  --color-risk-medium-border: var(--risk-medium-border);
+  --color-risk-medium-text: var(--risk-medium-text);
+
+  --color-risk-high: var(--risk-high);
+  --color-risk-high-bg: var(--risk-high-bg);
+  --color-risk-high-border: var(--risk-high-border);
+  --color-risk-high-text: var(--risk-high-text);
+
+  /* Master container and surface utilities */
+  --color-surface-bg: var(--surface-bg);
+  --color-surface-card: var(--surface-card);
+  --color-container-bg: var(--container-bg);
+}

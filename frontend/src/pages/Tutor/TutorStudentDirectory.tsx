@@ -1,0 +1,643 @@
+import React, { useEffect, useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+import { userService } from '../../services/userService';
+import { academicService } from '../../services/academicService';
+import type { User, Grade, Attendance } from '../../types';
+import { computeStudentRiskRows } from '../../utils/analyticsHelpers';
+import { User as UserIcon, Search, ArrowUpDown, Users, ChevronUp, ChevronDown, AlertCircle, History, Calendar, CheckCircle2, Award, Clock } from 'lucide-react';
+import { StudentProfileHistoryModal } from '../../components/StudentProfileHistoryModal';
+import { TutorCohortFilter } from '../../components/TutorCohortFilter';
+import {
+  useTutorCohortFilter,
+  isStudentInCohort,
+  getCachedTutorStudents,
+} from '../../utils/tutorCohortHelpers';
+import type { TutorCohortHistoryData, TutorHistoricalCohortRecord } from '../../types';
+import { getActiveSystemSemester } from '../../utils/sessionDescriptionHelpers';
+
+/* ─── Badge helpers (Clean typography without pill container) ─── */
+const getAralBadge = (level?: string | null) => {
+  const formatted = level ? level.toUpperCase() : 'BASIC';
+  return (
+    <span className="text-xs font-semibold text-gray-700 dark:text-slate-300 uppercase">
+      {formatted}
+    </span>
+  );
+};
+
+import { compareNamesByLastName } from '../../utils/studentFormatters';
+import { matchesSearch } from '../../utils/searchHelpers';
+
+function getDepEdSchoolYear(date: Date = new Date()) {
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear();
+
+  let syStart = year;
+  let syEnd = year + 1;
+  let currentPeriod: '1st' | '2nd' | 'summer' = '1st';
+
+  if (month < 7) {
+    syStart = year - 1;
+    syEnd = year;
+    currentPeriod = month === 6 ? 'summer' : '2nd';
+  } else {
+    currentPeriod = '1st';
+  }
+
+  return {
+    syStart,
+    syEnd,
+    currentPeriod,
+    currentKey: `${syStart}-${syEnd}`,
+    displayLabel: `SY ${syStart}–${syEnd}`,
+  };
+}
+
+export const getSchoolYearFromDate = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return '2026-2027';
+  const clean = dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`;
+  const d = new Date(clean);
+  if (isNaN(d.getTime())) return '2026-2027';
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  if (month >= 7) {
+    return `${year}-${year + 1}`;
+  } else {
+    return `${year - 1}-${year}`;
+  }
+};
+
+export const getSemesterFromDate = (dateStr: string | null | undefined): '1st' | '2nd' | 'summer' => {
+  if (!dateStr) return '1st';
+  const clean = dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`;
+  const d = new Date(clean);
+  if (isNaN(d.getTime())) return '1st';
+  const month = d.getMonth() + 1;
+  if (month >= 7 && month <= 12) return '1st';
+  if (month >= 1 && month <= 5) return '2nd';
+  if (month === 6) return 'summer';
+  return '1st';
+};
+
+export const getSemesterFromGrade = (grade: Grade): '1st' | '2nd' | 'summer' => {
+  if (grade.quarter === 1 || grade.quarter === 2) return '1st';
+  if (grade.quarter === 3 || grade.quarter === 4) return '2nd';
+  return getSemesterFromDate(grade.date_logged || grade.created_at);
+};
+
+/* ─── Component ────────────────────────────────────────────────── */
+export const TutorStudentDirectory: React.FC = () => {
+  const { user } = useAuth();
+  const [students, setStudents] = useState<User[]>(() => getCachedTutorStudents(user?.id));
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [isLoading, setIsLoading] = useState(() => getCachedTutorStudents(user?.id).length === 0);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState<string>('name');
+  const [sortAsc, setSortAsc] = useState(true);
+
+  // Cohort top filter state (ARAL Level, Subject, Grade - Section) synced across tutor dashboard
+  const {
+    selectedAralLevel,
+    setSelectedAralLevel,
+    selectedSubject,
+    setSelectedSubject,
+    selectedCohort,
+    setSelectedCohort,
+    setSelectedCohortFilter,
+  } = useTutorCohortFilter(user);
+
+  // Cohort View Mode: 'active' | 'past'
+  const [cohortViewMode, setCohortViewMode] = useState<'active' | 'past'>('active');
+  const [cohortHistory, setCohortHistory] = useState<TutorCohortHistoryData | null>(null);
+  const [selectedPastPeriodFilter, setSelectedPastPeriodFilter] = useState<string>('all');
+  const [historyStudentId, setHistoryStudentId] = useState<string | null>(null);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
+
+  const currentSchoolYear = useMemo(() => getDepEdSchoolYear(), []);
+  const [activeSystemSy, setActiveSystemSy] = useState<string>(
+    () => `${currentSchoolYear.syStart}-${currentSchoolYear.syEnd}`
+  );
+  const [activeSystemSem, setActiveSystemSem] = useState<'1st' | '2nd' | 'summer'>(
+    () => (getActiveSystemSemester() || currentSchoolYear.currentPeriod) as '1st' | '2nd' | 'summer'
+  );
+  const activePeriodKey = useMemo(() => `${activeSystemSy}|${activeSystemSem}`, [activeSystemSy, activeSystemSem]);
+
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>(
+    () => `${currentSchoolYear.syStart}-${currentSchoolYear.syEnd}|${currentSchoolYear.currentPeriod}`
+  );
+
+  const schoolYearOptions = useMemo(() => {
+    const activeKey = `${activeSystemSy}|${activeSystemSem}`;
+    const recordedPeriods = new Set<string>();
+
+    // 1. From grades
+    for (const g of grades) {
+      const gDate = g.date_logged || g.created_at;
+      const sy = getSchoolYearFromDate(gDate);
+      const sem = getSemesterFromGrade(g);
+      if (sy && sem) {
+        recordedPeriods.add(`${sy}|${sem}`);
+      }
+    }
+
+    // 2. From attendance
+    for (const a of attendance) {
+      const aDate = a.date;
+      const sy = getSchoolYearFromDate(aDate);
+      const sem = getSemesterFromDate(aDate);
+      if (sy && sem) {
+        recordedPeriods.add(`${sy}|${sem}`);
+      }
+    }
+
+    // Always include current active period
+    recordedPeriods.add(activeKey);
+
+    // Convert to list of { sy, sem }
+    const periodsList = Array.from(recordedPeriods).map((key) => {
+      const [sy, sem] = key.split('|');
+      return { key, sy, sem: sem as '1st' | '2nd' | 'summer' };
+    });
+
+    const semRank: Record<string, number> = { '1st': 1, '2nd': 2, 'summer': 3 };
+    periodsList.sort((a, b) => {
+      // Put active period first so it is default in both display and DOM order
+      if (a.key === activeKey) return -1;
+      if (b.key === activeKey) return 1;
+      const yearA = parseInt(a.sy.split('-')[0], 10) || 0;
+      const yearB = parseInt(b.sy.split('-')[0], 10) || 0;
+      if (yearA !== yearB) {
+        return yearB - yearA;
+      }
+      return (semRank[a.sem] || 0) - (semRank[b.sem] || 0);
+    });
+
+    const options: { key: string; label: string }[] = [];
+
+    periodsList.forEach(({ key, sy, sem }) => {
+      const isCurrent = key === activeKey;
+      const tag = isCurrent ? ' (Active)' : '';
+      const syDisplay = `SY ${sy.replace('-', '–')}`;
+      const semDisplay = sem === '1st' ? '1st Semester' : sem === '2nd' ? '2nd Semester' : 'Summer';
+
+      options.push({
+        key,
+        label: `${syDisplay} - ${semDisplay}${tag}`,
+      });
+    });
+
+    return options;
+  }, [activeSystemSy, activeSystemSem, grades, attendance]);
+
+  const fetchData = async () => {
+    if (!user) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [studentData, gradeData, attData, currentSyData, cohortHistData] = await Promise.allSettled([
+        userService.getAllUsers({ role: 'student', assigned_tutor: user.id }),
+        academicService.getGrades(),
+        academicService.getAttendanceHistory(),
+        academicService.getCurrentSchoolYear(),
+        academicService.getTutorCohortHistory(),
+      ]);
+      if (cohortHistData.status === 'fulfilled') {
+        setCohortHistory(cohortHistData.value);
+      }
+      if (studentData.status === 'fulfilled') {
+        setStudents(Array.isArray(studentData.value) ? studentData.value : []);
+      }
+      if (gradeData.status === 'fulfilled') {
+        setGrades(Array.isArray(gradeData.value) ? gradeData.value : []);
+      }
+      if (attData.status === 'fulfilled') {
+        setAttendance(Array.isArray(attData.value) ? attData.value : []);
+      }
+      if (currentSyData.status === 'fulfilled' && currentSyData.value?.school_year) {
+        const activeSy = currentSyData.value.school_year;
+        const activeSem = (currentSyData.value.current_semester || currentSyData.value.current_period || getActiveSystemSemester() || '1st') as '1st' | '2nd' | 'summer';
+        setActiveSystemSy(activeSy);
+        setActiveSystemSem(activeSem);
+        const resolvedActiveKey = `${activeSy}|${activeSem}`;
+        setSelectedSchoolYear((prev) => {
+          if (!prev || prev === `${currentSchoolYear.syStart}-${currentSchoolYear.syEnd}|${currentSchoolYear.currentPeriod}` || prev === activePeriodKey) {
+            return resolvedActiveKey;
+          }
+          return prev;
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Failed to load assigned students and performance data.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, [user]);
+
+  const filteredGrades = grades;
+  const filteredAttendance = attendance;
+
+  // Filter students matching the currently selected cohort
+  const cohortStudents = useMemo(() => {
+    return students.filter((s) =>
+      isStudentInCohort(s, {
+        aral_level: selectedAralLevel,
+        subject: selectedSubject,
+        cohort: selectedCohort,
+      })
+    );
+  }, [students, selectedAralLevel, selectedSubject, selectedCohort]);
+
+  const studentRows = useMemo(() => {
+    return computeStudentRiskRows(cohortStudents, filteredGrades, filteredAttendance).map((r) => ({ ...r, email: r.student.email }));
+  }, [cohortStudents, filteredGrades, filteredAttendance]);
+
+  const handleSort = (field: string) => {
+    if (sortField === field) setSortAsc(!sortAsc);
+    else { setSortField(field); setSortAsc(true); }
+  };
+
+  const filteredPastRecords = useMemo(() => {
+    if (!cohortHistory?.past_records) return [];
+    return cohortHistory.past_records.filter((rec) => {
+      if (selectedPastPeriodFilter !== 'all') {
+        if (rec.period !== selectedPastPeriodFilter && `${rec.school_year}|${rec.period}` !== selectedPastPeriodFilter) {
+          return false;
+        }
+      }
+      if (search.trim()) {
+        if (!matchesSearch(search, rec.student_name, rec.lrn)) return false;
+      }
+      return true;
+    });
+  }, [cohortHistory, selectedPastPeriodFilter, search]);
+
+  const pastPeriodOptions = useMemo(() => {
+    if (!cohortHistory?.past_records) return [];
+    const periods = new Set<string>();
+    cohortHistory.past_records.forEach((r) => {
+      periods.add(`${r.school_year} (${r.period})`);
+    });
+    return Array.from(periods);
+  }, [cohortHistory]);
+
+  const handleOpenStudentHistory = (studentId: string) => {
+    setHistoryStudentId(studentId);
+    setIsHistoryModalOpen(true);
+  };
+
+const aralLevelRank: Record<string, number> = {
+  basic: 1,
+  plus: 2,
+  summer: 3,
+  'aral summer': 3,
+  intervention: 1,
+  enrichment: 2,
+  advanced: 3,
+};
+
+  const hasMultipleAralLevels = useMemo(() => {
+    const distinct = new Set(studentRows.map((r) => (r.student.aral_level || '').trim().toLowerCase()).filter(Boolean));
+    return distinct.size > 1;
+  }, [studentRows]);
+
+  const filteredAndSorted = useMemo(() => {
+    return studentRows
+      .filter((r) => {
+        return matchesSearch(search, r.student.full_name, r.student.first_name, r.student.last_name, r.student.middle_name, r.student.lrn, r.student.parent_guardian_name, r.student.contact_number);
+      })
+      .sort((a, b) => {
+        if (sortField === 'name' || !sortField) {
+          const cmp = compareNamesByLastName(a.student, b.student);
+          return sortAsc ? cmp : -cmp;
+        }
+        if (sortField === 'lrn') {
+          const valA = a.student.lrn || '';
+          const valB = b.student.lrn || '';
+          return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        if (sortField === 'parent_guardian') {
+          const valA = a.student.parent_guardian_name || '';
+          const valB = b.student.parent_guardian_name || '';
+          return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        if (sortField === 'contact') {
+          const valA = a.student.contact_number || '';
+          const valB = b.student.contact_number || '';
+          return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        if (sortField === 'level') {
+          const valA = (a.student.aral_level || '').toLowerCase();
+          const valB = (b.student.aral_level || '').toLowerCase();
+          const rankA = aralLevelRank[valA] ?? 0;
+          const rankB = aralLevelRank[valB] ?? 0;
+          if (rankA !== rankB) return sortAsc ? rankA - rankB : rankB - rankA;
+          return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        const valA: any = (a.student as any)[sortField] || '';
+        const valB: any = (b.student as any)[sortField] || '';
+        if (typeof valA === 'string') return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        return sortAsc ? valA - valB : valB - valA;
+      });
+  }, [studentRows, search, sortField, sortAsc]);
+
+  const SortableHeader: React.FC<{ label: string; field: string; className?: string }> = ({ label, field, className = '' }) => {
+    const isActive = sortField === field;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(field)}
+        className={`inline-flex items-center gap-1.5 whitespace-nowrap text-left transition-colors hover:text-gray-700 dark:hover:text-slate-200 select-none cursor-pointer ${className}`}
+        aria-label={`Sort by ${label}`}
+      >
+        <span className="whitespace-nowrap">{label}</span>
+        {isActive ? (
+          sortAsc ? <ChevronUp className="w-3.5 h-3.5 text-[var(--brand)] shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-[var(--brand)] shrink-0" />
+        ) : (
+          <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-75 shrink-0" />
+        )}
+      </button>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 sm:space-y-6 skeleton-container" style={{ fontFamily: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+        {/* Cohort Filter Skeleton */}
+        <div className="rounded-md border border-gray-200 dark:border-[#1A1A1A] bg-white dark:bg-[#111111] p-3 animate-pulse">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+            <div className="h-9 w-full rounded bg-gray-100 dark:bg-gray-800" />
+            <div className="h-9 w-full rounded bg-gray-100 dark:bg-gray-800" />
+            <div className="h-9 w-full rounded bg-gray-100 dark:bg-gray-800" />
+            <div className="h-9 w-full rounded bg-gray-100 dark:bg-gray-800" />
+          </div>
+        </div>
+
+        {/* Directory Table Card skeleton */}
+        <div className="rounded-md border border-gray-200 dark:border-[#1A1A1A] bg-white dark:bg-[#111111] animate-pulse skeleton-row-2">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-3.5 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-[#1A1A1A]">
+            <div className="space-y-1.5">
+              <div className="h-4 w-44 rounded bg-gray-200 dark:bg-gray-800" />
+              <div className="h-3 w-24 rounded bg-gray-100 dark:bg-gray-800" />
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="h-8 sm:h-8.5 w-full sm:w-52 rounded-md bg-gray-100 dark:bg-gray-800" />
+            </div>
+          </div>
+
+          <div className="p-3.5 sm:p-6 space-y-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="flex items-center gap-4 py-2 border-b border-gray-50 dark:border-gray-900/50">
+                <div className="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-800 shrink-0" />
+                <div className="space-y-1.5 flex-1">
+                  <div className="h-3.5 w-36 rounded bg-gray-200 dark:bg-gray-800" />
+                  <div className="h-2.5 w-24 rounded bg-gray-100 dark:bg-gray-800" />
+                </div>
+                <div className="h-4 w-20 rounded bg-gray-100 dark:bg-gray-800 hidden md:block" />
+                <div className="h-5 w-16 rounded-full bg-gray-200 dark:bg-gray-800" />
+                <div className="h-6 w-6 rounded-md bg-gray-200 dark:bg-gray-800" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-start gap-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-200 rounded-md p-5">
+        <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-bold">Failed to load student directory</p>
+          <p className="text-xs mt-0.5 text-rose-700 dark:text-rose-300">{error}</p>
+          <button
+            type="button"
+            onClick={fetchData}
+            className="mt-3 px-3.5 py-1.5 bg-rose-600 text-white rounded-md text-xs font-bold hover:bg-rose-700 transition cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 sm:space-y-6 data-loaded-content" style={{ fontFamily: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+
+      {/* ── Tutor Multi-Cohort Filter (ARAL Level, Subject, Grade - Section) ── */}
+      <TutorCohortFilter
+        user={user}
+        students={students}
+        isLoading={isLoading}
+        selectedAralLevel={selectedAralLevel}
+        onSelectAralLevel={setSelectedAralLevel}
+        selectedSubject={selectedSubject}
+        onSelectSubject={setSelectedSubject}
+        selectedCohort={selectedCohort}
+        onSelectCohort={setSelectedCohort}
+        onSelectClass={(level, subject, cohort) =>
+          setSelectedCohortFilter({ aral_level: level, subject, cohort })
+        }
+        allowAll={true}
+        title="CURRENT CLASS FOR VIEW"
+      />
+
+      {/* ── States ────────────────────────────────────────────────── */}
+      {students.length === 0 ? (
+        <div className="bg-white dark:bg-[#111111] rounded-md border border-gray-200 dark:border-[#1A1A1A] p-6 sm:p-10 text-center space-y-3">
+          <div className="w-14 h-14 rounded-md bg-gray-50 dark:bg-[#161616] border border-gray-200 dark:border-[#1A1A1A] flex items-center justify-center mx-auto">
+            <Users className="w-7 h-7 text-gray-300 dark:text-slate-600" />
+          </div>
+          <p className="text-base font-bold text-gray-800 dark:text-slate-200">No students assigned yet</p>
+          <p className="text-xs text-gray-400 dark:text-slate-500 max-w-sm mx-auto">Ask your administrator to assign student accounts so you can track performance and attendance.</p>
+        </div>
+      ) : (
+        <div className="rounded-md border border-gray-200 dark:border-[#1A1A1A] bg-white dark:bg-[#111111] relative">
+          {/* Section header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-3.5 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-[#1A1A1A]">
+            <div className="min-w-0">
+              <h3 className="font-bold text-gray-900 dark:text-slate-100 text-xs sm:text-base uppercase tracking-tight">ASSIGNED STUDENTS DETAILS</h3>
+              <p className="mt-0.5 text-[11px] sm:text-xs font-normal text-gray-500 dark:text-slate-400">
+                {filteredAndSorted.length} Student{filteredAndSorted.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <label className="relative w-full sm:w-56 md:w-64">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                <input
+                  type="search"
+                  placeholder="Search student or LRN..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  aria-label="Search assigned students"
+                  className="h-8 sm:h-8.5 w-full rounded-md border border-gray-200 dark:border-[#1A1A1A] bg-gray-50 dark:bg-[#161616] pl-8 pr-2.5 text-xs font-semibold text-gray-700 dark:text-slate-200 outline-none transition placeholder:text-gray-400 focus:border-[var(--brand)] focus:bg-white dark:focus:bg-[#111111]"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-3 sm:p-6">
+            {filteredAndSorted.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-10 sm:py-12 text-center">
+                <Users className="w-10 h-10 text-gray-200 dark:text-gray-700" />
+                <p className="text-sm font-semibold text-gray-500 dark:text-slate-400">No matching students found</p>
+                <p className="text-xs text-gray-400 dark:text-slate-500">
+                  {search.trim() ? 'Try a different student name or LRN' : 'No students found in this cohort'}
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* ── Mobile View (< 768px): Mobile-optimized table with sealed sticky student column ── */}
+                <div className="md:hidden overflow-x-auto mobile-scroll-table -mx-3 px-0 border border-gray-200 dark:border-[#1A1A1A] rounded-md bg-white dark:bg-[#111111]">
+                  <table className="min-w-[620px] w-full border-separate border-spacing-0 text-xs" style={{ fontFamily: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+                    <thead>
+                      <tr className="bg-gray-50 dark:bg-[#151515]">
+                        <th className="sticky left-0 z-20 bg-gray-50 dark:bg-[#151515] w-[34%] min-w-[145px] px-2.5 py-2 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400 border-b border-r border-gray-200 dark:border-[#222222] shadow-[3px_0_5px_-1px_rgba(0,0,0,0.06)] dark:shadow-[3px_0_5px_-1px_rgba(0,0,0,0.5)]">
+                          <SortableHeader label="STUDENT" field="name" />
+                        </th>
+                        <th className="min-w-[95px] px-2 py-2 text-center text-[10.5px] font-bold uppercase tracking-wider text-gray-400 border-b border-r border-gray-100 dark:border-[#1A1A1A]">
+                          <SortableHeader label="LRN" field="lrn" className="justify-center" />
+                        </th>
+                        <th className="min-w-[85px] px-2 py-2 text-center text-[10.5px] font-bold uppercase tracking-wider text-gray-400 border-b border-r border-gray-100 dark:border-[#1A1A1A]">
+                          <SortableHeader label="ARAL LEVEL" field="level" className="justify-center" />
+                        </th>
+                        <th className="min-w-[130px] px-2 py-2 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400 border-b border-r border-gray-100 dark:border-[#1A1A1A]">
+                          <SortableHeader label="PARENT / GUARDIAN" field="parent_guardian" />
+                        </th>
+                        <th className="min-w-[105px] px-2 py-2 text-center text-[10.5px] font-bold uppercase tracking-wider text-gray-400 border-b border-r border-gray-100 dark:border-[#1A1A1A]">
+                          <SortableHeader label="CONTACT NO." field="contact" className="justify-center" />
+                        </th>
+                        <th className="w-14 min-w-[55px] px-2 py-2 text-center text-[10.5px] font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-[#1A1A1A]">
+                          ACTION
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white dark:bg-[#111111]">
+                      {filteredAndSorted.map((row, index) => (
+                        <tr key={`mobile-assigned-${row.student.id}`} className="group transition-colors hover:bg-gray-50/80 dark:hover:bg-[#151515]">
+                          <td className="sticky left-0 z-10 bg-white group-hover:bg-gray-50 dark:bg-[#111111] dark:group-hover:bg-[#151515] px-2.5 py-2 font-semibold text-gray-800 dark:text-slate-100 whitespace-nowrap border-b border-r border-gray-200 dark:border-[#222222] shadow-[3px_0_5px_-1px_rgba(0,0,0,0.06)] dark:shadow-[3px_0_5px_-1px_rgba(0,0,0,0.5)]">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-[10px] text-gray-400 font-mono shrink-0 w-4 text-right">
+                                {index + 1}.
+                              </span>
+                              <Link
+                                to={`/tutor/students/${row.student.id}`}
+                                className="block truncate max-w-[115px] text-xs font-semibold text-gray-800 dark:text-slate-100 hover:text-[var(--brand)] transition-colors"
+                                title={row.student.full_name}
+                              >
+                                {row.student.full_name}
+                              </Link>
+                            </div>
+                          </td>
+                          <td className="px-2 py-2 text-center text-gray-600 dark:text-slate-300 whitespace-nowrap text-xs font-normal font-mono border-b border-r border-gray-100 dark:border-[#1A1A1A]">
+                            {row.student.lrn || 'N/A'}
+                          </td>
+                          <td className="px-2 py-2 text-center whitespace-nowrap border-b border-r border-gray-100 dark:border-[#1A1A1A]">
+                            {getAralBadge(row.student.aral_level)}
+                          </td>
+                          <td className="px-2 py-2 text-left text-gray-700 dark:text-slate-300 whitespace-nowrap text-xs font-normal uppercase border-b border-r border-gray-100 dark:border-[#1A1A1A]">
+                            <span className="block truncate max-w-[125px]" title={row.student.parent_guardian_name || '—'}>
+                              {row.student.parent_guardian_name || '—'}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-center text-gray-700 dark:text-slate-300 whitespace-nowrap text-xs font-mono border-b border-r border-gray-100 dark:border-[#1A1A1A]">
+                            {row.student.contact_number || '—'}
+                          </td>
+                          <td className="px-2 py-2 text-center whitespace-nowrap border-b border-gray-100 dark:border-[#1A1A1A]">
+                            <Link
+                              to={`/tutor/students/${row.student.id}`}
+                              className="inline-flex items-center justify-center text-gray-400 hover:text-[var(--brand)] hover:bg-gray-100 dark:hover:bg-[#1e1e1e] rounded-md transition-colors cursor-pointer p-1.5 touch-manipulation"
+                              title="View Profile"
+                              aria-label={`View profile for ${row.student.full_name}`}
+                            >
+                              <UserIcon className="w-4 h-4" />
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* ── Desktop View (>= 768px): Original full table ── */}
+                <div className="hidden md:block overflow-x-auto mobile-scroll-table -mx-3 sm:mx-0 px-3 sm:px-0">
+                  <table className="min-w-[720px] w-full divide-y divide-gray-100 dark:divide-[#1A1A1A] text-sm font-normal" style={{ fontFamily: "'Poppins', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+                    <thead>
+                      <tr className="divide-x divide-gray-100 dark:divide-[#1A1A1A] bg-gray-50 dark:bg-[#151515]">
+                        <th className="w-12 px-2.5 sm:px-3 py-2 sm:py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                          #
+                        </th>
+                        <th className="px-3 sm:px-4 py-2 sm:py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                          <SortableHeader label="STUDENT" field="name" />
+                        </th>
+                        <th className="px-3 sm:px-4 py-2 sm:py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                          <SortableHeader label="LRN" field="lrn" />
+                        </th>
+                        <th className="px-3 sm:px-4 py-2 sm:py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                          <SortableHeader label="PARENT / GUARDIAN" field="parent_guardian" />
+                        </th>
+                        <th className="px-3 sm:px-4 py-2 sm:py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                          <SortableHeader label="CONTACT NO." field="contact" />
+                        </th>
+                        <th className="px-3 sm:px-4 py-2 sm:py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                          <SortableHeader label="ARAL LEVEL" field="level" />
+                        </th>
+                        <th className="w-16 px-3 sm:px-4 py-2 sm:py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                          ACTION
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-[#1A1A1A] bg-white dark:bg-[#111111]">
+                      {filteredAndSorted.map((row, index) => (
+                        <tr key={row.student.id} className="group divide-x divide-gray-100 dark:divide-[#1A1A1A] transition-colors hover:bg-gray-50/80 dark:hover:bg-[#151515]">
+                          <td className="px-2.5 sm:px-3 py-2 sm:py-2.5 text-center text-xs font-normal text-gray-400 whitespace-nowrap">
+                            {index + 1}
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-2.5 font-semibold text-gray-800 dark:text-slate-100">
+                            <span className="block truncate font-semibold text-gray-800 dark:text-slate-100">{row.student.full_name}</span>
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-2.5 text-gray-600 dark:text-slate-300 whitespace-nowrap text-xs font-normal font-mono">
+                            {row.student.lrn || 'N/A'}
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-2.5 text-gray-700 dark:text-slate-300 whitespace-nowrap text-xs font-normal uppercase">
+                            {row.student.parent_guardian_name || '—'}
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-2.5 text-gray-700 dark:text-slate-300 whitespace-nowrap text-xs font-mono">
+                            {row.student.contact_number || '—'}
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-2.5 whitespace-nowrap">
+                            {getAralBadge(row.student.aral_level)}
+                          </td>
+                          <td className="px-3 sm:px-4 py-2 sm:py-2.5 text-center whitespace-nowrap">
+                            <Link
+                              to={`/tutor/students/${row.student.id}`}
+                              className="inline-flex items-center justify-center text-gray-400 hover:text-[var(--brand)] hover:bg-gray-100 dark:hover:bg-[#1e1e1e] rounded-md transition-colors cursor-pointer p-2 sm:p-1.5 touch-manipulation"
+                              title="View Profile"
+                              aria-label={`View profile for ${row.student.full_name}`}
+                            >
+                              <UserIcon className="w-4 h-4" />
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
